@@ -3,10 +3,492 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Smart Route Finder - Transportation Project</title>
+    <meta name="description" content="Find the best routes between two locations with multiple transportation options including car, bicycle, and walking.">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+          crossorigin="" />
+    
+    <!-- Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Component CSS -->
+    <link rel="stylesheet" href="./RouteMap.css">
+    
+    <style>
+        /* Loading screen */
+        .app-loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .loading-content {
+            text-align: center;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
-    <p>hello</p>
+    <div id="root">
+        <!-- Loading screen while React loads -->
+        <div class="app-loading">
+            <div class="loading-content">
+                <div class="loading-spinner"></div>
+                <h2>🗺️ Loading Smart Route Finder</h2>
+                <p>Preparing your transportation planning tool...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- React and dependencies -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     
+    <!-- Babel for JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
+            crossorigin=""></script>
+    
+    <!-- React Leaflet (UMD build) -->
+    <script src="https://unpkg.com/react-leaflet@4.2.1/dist/react-leaflet-umd.js"></script>
+    
+    <!-- Axios for HTTP requests -->
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    
+    <!-- Main Application -->
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { MapContainer, TileLayer, Polyline, Marker, Popup } = ReactLeaflet;
+        
+        // Fix for default markers
+        delete L.Icon.Default.prototype._getIconUrl;
+        L.Icon.Default.mergeOptions({
+            iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+            iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+        });
+
+        const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjMyZTQwZWFkZmRjNzRmNGJhMDEyMDdmNThjM2U2MzNjIiwiaCI6Im11cm11cjY0In0=';
+
+        const RouteFinder = () => {
+            const [from, setFrom] = useState('');
+            const [to, setTo] = useState('');
+            const [routes, setRoutes] = useState({});
+            const [loading, setLoading] = useState(false);
+            const [coordinates, setCoordinates] = useState([]);
+            const [selectedMode, setSelectedMode] = useState('driving-car');
+            const [routeDetails, setRouteDetails] = useState({});
+
+                         const transportModes = [
+                 { 
+                     id: 'driving-car', 
+                     name: 'Car', 
+                     icon: '🚗', 
+                     color: '#2563eb',
+                     description: 'Fastest route by car'
+                 },
+                 { 
+                     id: 'cycling-regular', 
+                     name: 'Bicycle', 
+                     icon: '🚲', 
+                     color: '#059669',
+                     description: 'Bike-friendly route'
+                 },
+                 { 
+                     id: 'foot-walking', 
+                     name: 'Walking', 
+                     icon: '🚶‍♂️', 
+                     color: '#dc2626',
+                     description: 'Pedestrian route'
+                 },
+                 { 
+                     id: 'public-transport', 
+                     name: 'Bus/Transit', 
+                     icon: '🚌', 
+                     color: '#f59e0b',
+                     description: 'Public transportation route'
+                 }
+             ];
+
+            const fetchCoordinates = async (place) => {
+                const res = await axios.get('https://nominatim.openstreetmap.org/search', {
+                    params: {
+                        q: `${place}, Surat, India`,
+                        format: 'json',
+                        limit: 1
+                    }
+                });
+                if (res.data.length === 0) {
+                    throw new Error(`Location not found: ${place}`);
+                }
+                const data = res.data[0];
+                return [parseFloat(data.lon), parseFloat(data.lat)];
+            };
+
+            const fetchRouteForMode = async (mode, fromCoord, toCoord) => {
+                try {
+                    const res = await axios.post(
+                        `https://api.openrouteservice.org/v2/directions/${mode}/geojson`,
+                        { 
+                            coordinates: [fromCoord, toCoord],
+                            options: {
+                                avoid_features: [],
+                                round_trip: false
+                            }
+                        },
+                        {
+                            headers: {
+                                Authorization: ORS_API_KEY,
+                                'Content-Type': 'application/json'
+                            }
+                        }
+                    );
+                    return res.data.features[0];
+                } catch (error) {
+                    console.error(`Error fetching route for ${mode}:`, error);
+                    return null;
+                }
+            };
+
+            const fetchAllRoutes = async () => {
+                if (!from || !to) return;
+
+                setLoading(true);
+                try {
+                    const fromCoord = await fetchCoordinates(from);
+                    const toCoord = await fetchCoordinates(to);
+                    setCoordinates([fromCoord, toCoord]);
+
+                    const routePromises = transportModes.map(async (mode) => {
+                        const route = await fetchRouteForMode(mode.id, fromCoord, toCoord);
+                        return { mode: mode.id, route };
+                    });
+
+                    const results = await Promise.all(routePromises);
+                    const newRoutes = {};
+                    const newDetails = {};
+
+                    results.forEach(({ mode, route }) => {
+                        if (route) {
+                            newRoutes[mode] = route;
+                            const summary = route.properties.summary;
+                            newDetails[mode] = {
+                                distance: (summary.distance / 1000).toFixed(1),
+                                duration: Math.round(summary.duration / 60),
+                            };
+                        }
+                    });
+
+                    setRoutes(newRoutes);
+                    setRouteDetails(newDetails);
+
+                    // Select the fastest route by default
+                    const fastestMode = Object.keys(newDetails).reduce((fastest, current) => {
+                        return newDetails[current].duration < newDetails[fastest].duration ? current : fastest;
+                    });
+                    setSelectedMode(fastestMode);
+
+                } catch (error) {
+                    console.error('Error fetching routes:', error);
+                    alert('Error fetching routes. Please check the location names and try again.');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleGetRoute = async (e) => {
+                e.preventDefault();
+                await fetchAllRoutes();
+            };
+
+            const formatDuration = (minutes) => {
+                if (minutes < 60) {
+                    return `${minutes} mins`;
+                }
+                const hours = Math.floor(minutes / 60);
+                const mins = minutes % 60;
+                return `${hours}h ${mins}m`;
+            };
+
+            const getModeConfig = (modeId) => {
+                return transportModes.find(mode => mode.id === modeId);
+            };
+
+            return React.createElement('div', { className: 'route-finder-container' }, [
+                React.createElement('h2', { key: 'title' }, '🗺️ Smart Route Finder'),
+                
+                React.createElement('form', { 
+                    key: 'form',
+                    onSubmit: handleGetRoute, 
+                    className: 'input-section' 
+                }, [
+                    React.createElement('input', {
+                        key: 'from',
+                        type: 'text',
+                        placeholder: 'From (e.g. SVNIT, Adajan)',
+                        value: from,
+                        onChange: (e) => setFrom(e.target.value),
+                        required: true
+                    }),
+                    React.createElement('input', {
+                        key: 'to',
+                        type: 'text',
+                        placeholder: 'To (e.g. Surat Railway Station)',
+                        value: to,
+                        onChange: (e) => setTo(e.target.value),
+                        required: true
+                    }),
+                    React.createElement('button', {
+                        key: 'submit',
+                        type: 'submit',
+                        disabled: loading
+                    }, loading ? 'Finding Routes...' : 'Find Routes')
+                ]),
+                
+                loading && React.createElement('div', { 
+                    key: 'loading',
+                    className: 'loading-container' 
+                }, [
+                    React.createElement('div', { 
+                        key: 'spinner',
+                        className: 'loading-spinner' 
+                    }),
+                    React.createElement('p', { key: 'text' }, 'Calculating routes for all transportation modes...')
+                ]),
+                
+                Object.keys(routes).length > 0 && !loading && [
+                    React.createElement('div', { 
+                        key: 'tabs',
+                        className: 'transport-tabs' 
+                    }, 
+                        transportModes.map((mode) => 
+                            React.createElement('button', {
+                                key: mode.id,
+                                className: `transport-tab ${selectedMode === mode.id ? 'active' : ''} ${!routes[mode.id] ? 'disabled' : ''}`,
+                                onClick: () => routes[mode.id] && setSelectedMode(mode.id),
+                                disabled: !routes[mode.id],
+                                style: { '--tab-color': mode.color }
+                            }, [
+                                React.createElement('span', { 
+                                    key: 'icon',
+                                    className: 'tab-icon' 
+                                }, mode.icon),
+                                React.createElement('span', { 
+                                    key: 'name',
+                                    className: 'tab-name' 
+                                }, mode.name),
+                                routeDetails[mode.id] && React.createElement('span', { 
+                                    key: 'time',
+                                    className: 'tab-time' 
+                                }, formatDuration(routeDetails[mode.id].duration))
+                            ])
+                        )
+                    ),
+                    
+                    React.createElement('div', { 
+                        key: 'map',
+                        className: 'map-container' 
+                    },
+                        React.createElement(MapContainer, {
+                            center: [21.1702, 72.8311],
+                            zoom: 13,
+                            style: { height: '100%', width: '100%' }
+                        }, [
+                            React.createElement(TileLayer, {
+                                key: 'tiles',
+                                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                            }),
+                            
+                            ...Object.entries(routes).map(([modeId, route]) => {
+                                const modeConfig = getModeConfig(modeId);
+                                const isSelected = modeId === selectedMode;
+                                return React.createElement(Polyline, {
+                                    key: modeId,
+                                    positions: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+                                    color: modeConfig.color,
+                                    weight: isSelected ? 6 : 3,
+                                    opacity: isSelected ? 0.9 : 0.4,
+                                    eventHandlers: {
+                                        click: () => setSelectedMode(modeId)
+                                    }
+                                });
+                            }),
+                            
+                            coordinates.length === 2 && [
+                                React.createElement(Marker, {
+                                    key: 'start',
+                                    position: coordinates[0].slice().reverse()
+                                }, 
+                                    React.createElement(Popup, {}, 
+                                        React.createElement('div', {}, [
+                                            React.createElement('strong', { key: 'label' }, 'Start: '),
+                                            from
+                                        ])
+                                    )
+                                ),
+                                React.createElement(Marker, {
+                                    key: 'end',
+                                    position: coordinates[1].slice().reverse()
+                                },
+                                    React.createElement(Popup, {},
+                                        React.createElement('div', {}, [
+                                            React.createElement('strong', { key: 'label' }, 'Destination: '),
+                                            to
+                                        ])
+                                    )
+                                )
+                            ]
+                        ])
+                    ),
+                    
+                    React.createElement('div', { 
+                        key: 'details',
+                        className: 'route-details-panel' 
+                    }, [
+                        React.createElement('div', { 
+                            key: 'selected',
+                            className: 'selected-route-info' 
+                        }, [
+                            React.createElement('h3', { key: 'title' }, 
+                                `${getModeConfig(selectedMode).icon} ${getModeConfig(selectedMode).name} Route`
+                            ),
+                            React.createElement('p', { 
+                                key: 'desc',
+                                className: 'route-description' 
+                            }, getModeConfig(selectedMode).description),
+                            routeDetails[selectedMode] && React.createElement('div', { 
+                                key: 'stats',
+                                className: 'route-stats' 
+                            }, [
+                                React.createElement('div', { 
+                                    key: 'duration',
+                                    className: 'stat' 
+                                }, [
+                                    React.createElement('span', { 
+                                        key: 'label',
+                                        className: 'stat-label' 
+                                    }, 'Duration:'),
+                                    React.createElement('span', { 
+                                        key: 'value',
+                                        className: 'stat-value' 
+                                    }, formatDuration(routeDetails[selectedMode].duration))
+                                ]),
+                                React.createElement('div', { 
+                                    key: 'distance',
+                                    className: 'stat' 
+                                }, [
+                                    React.createElement('span', { 
+                                        key: 'label',
+                                        className: 'stat-label' 
+                                    }, 'Distance:'),
+                                    React.createElement('span', { 
+                                        key: 'value',
+                                        className: 'stat-value' 
+                                    }, `${routeDetails[selectedMode].distance} km`)
+                                ])
+                            ])
+                        ]),
+                        
+                        React.createElement('div', { 
+                            key: 'comparison',
+                            className: 'routes-comparison' 
+                        }, [
+                            React.createElement('h4', { key: 'title' }, 'All Routes Comparison'),
+                            React.createElement('div', { 
+                                key: 'grid',
+                                className: 'comparison-grid' 
+                            }, 
+                                transportModes.map((mode) => {
+                                    const details = routeDetails[mode.id];
+                                    const isAvailable = !!details;
+                                    const isFastest = isAvailable && Object.keys(routeDetails).every(
+                                        modeKey => routeDetails[modeKey].duration >= details.duration
+                                    );
+                                    
+                                    return React.createElement('div', {
+                                        key: mode.id,
+                                        className: `comparison-card ${!isAvailable ? 'unavailable' : ''} ${isFastest ? 'fastest' : ''}`,
+                                        onClick: () => isAvailable && setSelectedMode(mode.id)
+                                    }, [
+                                        React.createElement('div', { 
+                                            key: 'header',
+                                            className: 'card-header' 
+                                        }, [
+                                            React.createElement('span', { 
+                                                key: 'icon',
+                                                className: 'card-icon' 
+                                            }, mode.icon),
+                                            React.createElement('span', { 
+                                                key: 'title',
+                                                className: 'card-title' 
+                                            }, mode.name),
+                                            isFastest && React.createElement('span', { 
+                                                key: 'badge',
+                                                className: 'fastest-badge' 
+                                            }, 'Fastest')
+                                        ]),
+                                        isAvailable ? React.createElement('div', { 
+                                            key: 'details',
+                                            className: 'card-details' 
+                                        }, [
+                                            React.createElement('div', { 
+                                                key: 'duration',
+                                                className: 'detail-row' 
+                                            }, 
+                                                React.createElement('span', {}, `⏱️ ${formatDuration(details.duration)}`)
+                                            ),
+                                            React.createElement('div', { 
+                                                key: 'distance',
+                                                className: 'detail-row' 
+                                            }, 
+                                                React.createElement('span', {}, `📏 ${details.distance} km`)
+                                            )
+                                        ]) : React.createElement('div', { 
+                                            key: 'unavailable',
+                                            className: 'card-unavailable' 
+                                        }, 
+                                            React.createElement('span', {}, 'Route not available')
+                                        )
+                                    ]);
+                                })
+                            )
+                        ])
+                    ])
+                ]
+            ]);
+        };
+
+        // Render the application
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(React.createElement(RouteFinder));
+    </script>
 </body>
 </html>
