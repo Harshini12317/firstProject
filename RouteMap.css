@@ -1,0 +1,108 @@
+/* src/components/RouteFinder.css */
+
+:root {
+  --primary-color: #2563eb;
+  --accent-color: #1e40af;
+  --bg-light: #f9fafb;
+  --bg-white: #ffffff;
+  --text-dark: #1f2937;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --rounded: 12px;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: #dae0ec;
+}
+
+.route-finder-container {
+  max-width: 1000px;
+  margin: 3rem auto;
+  padding: 2rem;
+  background: var(--bg-white);
+  border-radius: var(--rounded);
+  box-shadow: var(--shadow);
+}
+
+.route-finder-container h2 {
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--accent-color);
+  margin-bottom: 2rem;
+}
+
+.input-section {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.input-section input {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: var(--rounded);
+  width: 250px;
+  transition: box-shadow 0.3s, border 0.3s;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.input-section input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.input-section button {
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(to right, #2563eb, #1e40af);
+  color: white;
+  font-size: 1rem;
+  font-weight: 500;
+  border: none;
+  border-radius: var(--rounded);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.3s ease;
+}
+
+.input-section button:hover {
+  transform: scale(1.02);
+  box-shadow: var(--shadow);
+}
+
+.map-container {
+  height: 500px;
+  width: 100%;
+  border-radius: var(--rounded);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  margin-bottom: 2rem;
+}
+
+.info-panel {
+  background-color: var(--bg-light);
+  padding: 1.25rem 2rem;
+  border-radius: var(--rounded);
+  display: flex;
+  justify-content: space-around;
+  flex-wrap: wrap;
+  box-shadow: var(--shadow);
+}
+
+.info-panel h3 {
+  width: 100%;
+  text-align: center;
+  font-size: 1.25rem;
+  color: var(--accent-color);
+  margin-bottom: 1rem;
+}
+
+.info-panel p {
+  font-size: 1rem;
+  color: var(--text-dark);
+  margin: 0.5rem 1rem;
+}
